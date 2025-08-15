@@ -26,7 +26,7 @@
 
 ## 📸 Dashboard Screenshot
 
-> Live view of the provisioned Grafana dashboard wired to PostgreSQL
+> View of the provisioned Grafana dashboard wired to PostgreSQL
 
 ![Grafana banking dashboard](docs/img/dashboard.png)
 
