@@ -28,7 +28,7 @@
 
 > Live view of the provisioned Grafana dashboard wired to PostgreSQL
 
-![Grafana banking dashboard](sandbox:/mnt/data/6fe3cdff-3bf6-4808-bd49-601c6ba4e71e.png)
+![Grafana banking dashboard](docs/img/dashboard.png)
 
 ---
 
