@@ -1,0 +1,16 @@
+apiVersion: 1
+
+datasources:
+  - name: Postgres (RDS)
+    uid: pg-rds          # <- stable UID we will reference from the dashboard JSON
+    type: postgres
+    access: proxy
+    isDefault: true
+    url: ${PG_HOST}:${PG_PORT}
+    user: ${PG_USER}
+    secureJsonData:
+      password: ${PG_PASSWORD}
+    jsonData:
+      database: ${PG_DB}
+      sslmode: ${PG_SSLMODE}   # "require" for RDS; "disable" for local DB
+      postgresVersion: 1500

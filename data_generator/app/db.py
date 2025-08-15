@@ -1,22 +1,52 @@
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, List
 from pathlib import Path
 import logging
+
 import psycopg2
 from psycopg2.extensions import connection as PGConnection
+from psycopg2.extras import execute_batch
+
 from .config import Settings
 
 log = logging.getLogger("db")
 
-# Path to SQL files (relative to project root)
-BASE_DIR = Path(__file__).resolve().parent.parent  # data_generator/
-SQL_DIR = BASE_DIR / "sql"
 
-# Load SQL files
+def _sql_dir_candidates() -> List[Path]:
+    """
+    Return plausible locations of the sql/ directory.
+
+    Layouts we support:
+      - Container layout:
+          /app/app/*.py   (this file)
+          /app/sql/*.sql  (SQL files)
+      - Project-root execution:
+          <repo>/data_generator/app/*.py
+          <repo>/sql/*.sql
+      - CWD fallback:
+          $PWD/sql/*.sql
+    """
+    here = Path(__file__).resolve()
+    return [
+        here.parent.parent / "sql",        # /app/sql  (container case)
+        here.parent.parent.parent / "sql", # <repo>/sql (if run from repo root)
+        Path.cwd() / "sql",                # CWD fallback
+    ]
+
+
 def _load_sql(filename: str) -> str:
-    path = SQL_DIR / filename
-    if not path.exists():
-        raise FileNotFoundError(f"SQL file not found: {path}")
-    return path.read_text()
+    """
+    Load an SQL file from one of the candidate sql/ directories.
+    Logs the resolved path when found.
+    """
+    for base in _sql_dir_candidates():
+        path = base / filename
+        if path.exists():
+            log.info("Loading SQL from %s", path)
+            return path.read_text(encoding="utf-8")
+
+    searched = ", ".join(str(p / filename) for p in _sql_dir_candidates())
+    raise FileNotFoundError(f"SQL file {filename} not found. Searched: {searched}")
+
 
 CREATE_TABLE_SQL = _load_sql("schema.sql")
 INSERT_SQL = _load_sql("insert.sql")
@@ -25,38 +55,54 @@ INSERT_SQL = _load_sql("insert.sql")
 def connect(cfg: Settings) -> PGConnection:
     """
     Establish and return a PostgreSQL connection.
+    Adds sslmode if provided (e.g., 'require' for AWS RDS).
     """
     log.info(
-        "Connecting to PostgreSQL at %s:%s (db=%s, user=%s)",
+        "Connecting to PostgreSQL at %s:%s (db=%s, user=%s, sslmode=%s)",
         cfg.db_host,
         cfg.db_port,
         cfg.db_name,
         cfg.db_user,
+        cfg.sslmode or "default",
     )
-    conn = psycopg2.connect(
+
+    kwargs = dict(
         host=cfg.db_host,
         port=cfg.db_port,
         dbname=cfg.db_name,
         user=cfg.db_user,
         password=cfg.db_password,
     )
+    if cfg.sslmode:
+        kwargs["sslmode"] = cfg.sslmode
+
+    conn = psycopg2.connect(**kwargs)
     conn.autocommit = False
     return conn
 
 
 def ensure_schema(conn: PGConnection) -> None:
     """
-    Create the banking_data table and indexes if they don't exist.
+    Ensure the target table(s) exist.
     """
-    with conn, conn.cursor() as cur:
+    log.info("Ensuring database schema...")
+    with conn.cursor() as cur:
         cur.execute(CREATE_TABLE_SQL)
-    log.info("Ensured schema and indexes exist.")
+    conn.commit()
+    log.info("Schema ready.")
 
 
-def insert_batch(conn: PGConnection, rows: Iterable[Tuple]) -> None:
+def insert_batch(conn: PGConnection, rows: Iterable[Tuple]) -> int:
     """
-    Insert a batch of rows in one transaction.
+    Insert a batch of rows using psycopg2.execute_batch.
+    Returns number of rows inserted.
     """
-    with conn, conn.cursor() as cur:
-        cur.executemany(INSERT_SQL, rows)
-    log.info("Inserted %d rows.", len(rows) if hasattr(rows, "__len__") else -1)
+    rows = list(rows)
+    if not rows:
+        return 0
+
+    with conn.cursor() as cur:
+        execute_batch(cur, INSERT_SQL, rows, page_size=100)
+
+    log.info("Inserted %d rows.", len(rows))
+    return len(rows)

@@ -1,0 +1,43 @@
+services:
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      # anonymous access for quick demo
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      # pass Postgres details from .env to datasource provisioning
+      - PG_HOST=${PG_HOST}
+      - PG_PORT=${PG_PORT}
+      - PG_DB=${PG_DB}
+      - PG_USER=${PG_USER}
+      - PG_PASSWORD=${PG_PASSWORD}
+      - PG_SSLMODE=${PG_SSLMODE:-require}
+    volumes:
+      # dashboards JSONs
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # dashboard provider (your repo stores it under grafana/dashboards/provider.yaml)
+      - ./grafana/dashboards/provider.yaml:/etc/grafana/provisioning/dashboards/provider.yaml:ro
+      # datasource provisioning (points Grafana to your AWS RDS)
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    restart: unless-stopped
+
+  data_generator:
+    build:
+      context: .
+      dockerfile: data_generator/Dockerfile
+    environment:
+      # map PG_* from .env to DB_* expected by the app (we also added DB_SSLMODE support)
+      - DB_HOST=${PG_HOST}
+      - DB_PORT=${PG_PORT}
+      - DB_NAME=${PG_DB}
+      - DB_USER=${PG_USER}
+      - DB_PASSWORD=${PG_PASSWORD}
+      - DB_SSLMODE=${PG_SSLMODE:-require}
+      # generator tuning
+      - BATCH_SIZE=${BATCH_SIZE:-10}
+      - SLEEP_SECONDS=${SLEEP_SECONDS:-15}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped

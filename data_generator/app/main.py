@@ -1,6 +1,7 @@
 import time
 import signal
 import logging
+from typing import Optional
 from datetime import datetime
 
 from .config import load_settings
@@ -13,12 +14,21 @@ shutdown = False
 
 
 def _sig_handler(signum, frame):
+    """
+    Signal handler to trigger graceful shutdown.
+    """
     global shutdown
     shutdown = True
-    logging.getLogger("main").info("Received signal %s — shutting down...", signum)
+    logging.getLogger("main").info(
+        "Received signal %s — shutting down...", signum
+    )
 
 
 def main():
+    """
+    Entry point for the data generator service.
+    Continuously generates synthetic transactions and inserts them into PostgreSQL.
+    """
     setup_logging()
     log = logging.getLogger("main")
     cfg = load_settings()
@@ -26,13 +36,15 @@ def main():
     signal.signal(signal.SIGINT, _sig_handler)
     signal.signal(signal.SIGTERM, _sig_handler)
 
-    conn = db.connect(cfg)
+    conn: Optional[db.PGConnection] = None
     try:
+        conn = db.connect(cfg)
         db.ensure_schema(conn)
 
         while not shutdown:
             ts = datetime.utcnow()
             rows = build_rows(cfg.batch_size, run_rules, ts)
+
             if rows:
                 db.insert_batch(conn, rows)
                 conn.commit()
@@ -42,15 +54,15 @@ def main():
 
             time.sleep(cfg.sleep_seconds)
 
-    except Exception as e:
-        log.exception("Fatal error: %s", e)
-
+    except Exception:
+        log.exception("Fatal error in main loop.")
     finally:
-        try:
-            conn.close()
-            log.info("Database connection closed.")
-        except Exception:
-            pass
+        if conn is not None:
+            try:
+                conn.close()
+                log.info("Database connection closed.")
+            except Exception:
+                log.exception("Error closing database connection.")
 
 
 if __name__ == "__main__":

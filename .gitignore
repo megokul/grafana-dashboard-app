@@ -4,3 +4,13 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+project_dump.py
+project_code_dump_part1.txt
+project_code_dump_part2.txt
+project_code_dump_part3.txt
+project_code_dump_part4.txt
+project_code_dump_part5.txt
+project_code_dump_part6.txt
+project_code_dump_index.txt
+project_structure.txt
+.vscode
